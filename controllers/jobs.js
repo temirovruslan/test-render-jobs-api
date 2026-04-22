@@ -3,15 +3,18 @@ const { StatusCodes } = require('http-status-codes')
 const { BadRequestError, NotFoundError } = require('../errors')
 
 const getAllJobs = async (req, res) => {
+  // only return jobs that belong to the logged-in user (req.user.userId set by auth middleware)
   const jobs = await Job.find({ createdBy: req.user.userId }).sort('createdAt')
   res.status(StatusCodes.OK).json({ jobs, count: jobs.length })
 }
+
 const getJob = async (req, res) => {
   const {
     user: { userId },
     params: { id: jobId },
   } = req
 
+  // find by both jobId AND userId so a user can't access another user's job
   const job = await Job.findOne({
     _id: jobId,
     createdBy: userId,
@@ -23,6 +26,8 @@ const getJob = async (req, res) => {
 }
 
 const createJob = async (req, res) => {
+  // attach the logged-in user's id to the job before saving
+  // this links the job to the user who created it
   req.body.createdBy = req.user.userId
   const job = await Job.create(req.body)
   res.status(StatusCodes.CREATED).json({ job })
@@ -38,10 +43,11 @@ const updateJob = async (req, res) => {
   if (company === '' || position === '') {
     throw new BadRequestError('Company or Position fields cannot be empty')
   }
+
   const job = await Job.findByIdAndUpdate(
-    { _id: jobId, createdBy: userId },
+    { _id: jobId, createdBy: userId }, // filter - also checks ownership
     req.body,
-    { new: true, runValidators: true }
+    { new: true, runValidators: true } // new: return updated doc, runValidators: re-run schema validation on update
   )
   if (!job) {
     throw new NotFoundError(`No job with id ${jobId}`)
@@ -55,6 +61,7 @@ const deleteJob = async (req, res) => {
     params: { id: jobId },
   } = req
 
+  // findOneAndDelete checks ownership at the same time - can't delete someone else's job
   const job = await Job.findOneAndDelete({ _id: jobId, createdBy: userId })
   if (!job) {
     throw new NotFoundError(`No job with id ${jobId}`)
